@@ -1,4 +1,3 @@
-import { searchFacts, type Fact } from "./db";
 import { queryGbrain } from "./gbrainStore";
 
 export type SearchMode = "focused" | "broad";
@@ -21,7 +20,6 @@ export type RetrievalPlan = {
 function classifyQuestion(question: string): SearchMode {
   const q = question.toLowerCase().trim();
 
-  // Questions that clearly ask for a broad/exploratory search.
   const broadPatterns = [
     /\beverything\b/,
     /\ball\b/,
@@ -50,21 +48,24 @@ function classifyQuestion(question: string): SearchMode {
     return "broad";
   }
 
-  // Otherwise treat the question as a focused lookup.
   return "focused";
 }
 
 /**
- * Retrieval is GBrain-first.
+ * GBrain-only retrieval.
  *
- * The live path no longer calls Gemini just to create a search plan.
- * This saves one complete LLM request per user question.
+ * IMPORTANT:
+ * We intentionally do NOT import ./db here.
+ *
+ * The Vercel deployment uses GBrain + PostgreSQL on Render.
+ * SQLite is only a local/legacy fallback and must not be initialized
+ * during the Vercel server build/runtime.
  */
 export async function retrieveForQuestion(
   question: string
 ): Promise<{
-  gmailFacts: Fact[];
-  driveFacts: Fact[];
+  gmailFacts: [];
+  driveFacts: [];
   plan: RetrievalPlan;
   gbrainContext: string | null;
 }> {
@@ -82,36 +83,38 @@ export async function retrieveForQuestion(
     `[retrieval] Search mode: ${searchMode} (local classification)`
   );
 
-  const gbrainContext = await queryGbrain(question, {
-    searchMode,
-  });
+  try {
+    const gbrainContext = await queryGbrain(question, {
+      searchMode,
+    });
 
-  if (gbrainContext) {
-    console.log("[retrieval] Using gbrain");
+    if (gbrainContext) {
+      console.log("[retrieval] Using gbrain");
+
+      return {
+        gmailFacts: [],
+        driveFacts: [],
+        plan,
+        gbrainContext,
+      };
+    }
+
+    console.warn("[retrieval] GBrain returned no results");
 
     return {
       gmailFacts: [],
       driveFacts: [],
       plan,
-      gbrainContext,
+      gbrainContext: null,
+    };
+  } catch (error) {
+    console.error("[retrieval] GBrain retrieval failed:", error);
+
+    return {
+      gmailFacts: [],
+      driveFacts: [],
+      plan,
+      gbrainContext: null,
     };
   }
-
-  /**
-   * SQLite fallback.
-   *
-   * Since the normal path is GBrain, this fallback simply searches
-   * the full question.
-   */
-  console.log("[retrieval] gbrain unavailable — using SQLite");
-
-  const gmailFacts = searchFacts("gmail", [question]);
-  const driveFacts = searchFacts("drive", [question]);
-
-  return {
-    gmailFacts,
-    driveFacts,
-    plan,
-    gbrainContext: null,
-  };
 }

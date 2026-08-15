@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  synthesizeAnswer,
-  synthesizeAnswerFromGbrainContext,
-} from "@/lib/gemini";
+import { synthesizeAnswerFromGbrainContext } from "@/lib/gemini";
 import { retrieveForQuestion } from "@/lib/retrieval";
 
 export async function POST(req: NextRequest) {
@@ -23,43 +20,37 @@ export async function POST(req: NextRequest) {
       gbrainContext,
     } = await retrieveForQuestion(question);
 
-    let answer: string;
-
-    if (gbrainContext) {
-      answer = await synthesizeAnswerFromGbrainContext(
-        question,
-        gbrainContext
-      );
-    } else {
-      answer = await synthesizeAnswer(
-        question,
-        gmailFacts,
-        driveFacts
+    if (!gbrainContext) {
+      return NextResponse.json(
+        {
+          error:
+            "GBrain could not retrieve any relevant information. Please try again.",
+        },
+        { status: 503 }
       );
     }
+
+    const answer = await synthesizeAnswerFromGbrainContext(
+      question,
+      gbrainContext
+    );
 
     return NextResponse.json({
       answer,
 
       debug: {
-        retrievalEngine: gbrainContext ? "gbrain" : "sqlite",
+        retrievalEngine: "gbrain",
         searchMode: plan.searchMode,
-        gmailFactsUsed: gmailFacts.map((f) => ({
-          title: f.title,
-          link: f.link,
-        })),
-        driveFactsUsed: driveFacts.map((f) => ({
-          title: f.title,
-          link: f.link,
-        })),
+        gmailFactsUsed: gmailFacts,
+        driveFactsUsed: driveFacts,
       },
     });
   } catch (err: any) {
-    console.error(err);
+    console.error("[api/query]", err);
 
     return NextResponse.json(
       {
-        error: err.message || "Something went wrong.",
+        error: err?.message || "Something went wrong.",
       },
       { status: 500 }
     );
