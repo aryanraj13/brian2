@@ -1,11 +1,7 @@
 import { getOAuth2Client } from "./google";
 import { fetchGmailFacts } from "./gmail";
 import { fetchDriveFacts } from "./drive";
-import { upsertFact, factCount } from "./db";
-import {
-  exportFactsToMarkdown,
-  importIntoGbrain,
-} from "./gbrainStore";
+import { upsertFactsIntoGbrain } from "./gbrainStorage";
 
 export type SyncResult = {
   success: boolean;
@@ -29,48 +25,43 @@ export async function syncPersonalData(): Promise<SyncResult> {
   const auth = getOAuth2Client();
   const months = Number(process.env.SYNC_MONTHS || 6);
 
-  // Gmail
+  console.log(`Fetching Gmail messages from the last ${months} months...`);
+
   const gmailFacts = await fetchGmailFacts(auth, months);
 
-  for (const fact of gmailFacts) {
-    upsertFact(fact);
-  }
+  console.log(`Fetched ${gmailFacts.length} Gmail facts.`);
 
-  // Google Drive
+  console.log(`Fetching Drive files from the last ${months} months...`);
+
   const driveFacts = await fetchDriveFacts(auth, months);
 
-  for (const fact of driveFacts) {
-    upsertFact(fact);
-  }
+  console.log(`Fetched ${driveFacts.length} Drive facts.`);
 
   const allFacts = [...gmailFacts, ...driveFacts];
 
-  // gbrain
   let gbrainSuccess = false;
   let gbrainSkipped = false;
 
   if (process.env.SKIP_GBRAIN === "1") {
     gbrainSkipped = true;
   } else {
-    const dir = exportFactsToMarkdown(allFacts);
-    const result = await importIntoGbrain(dir);
+    console.log(
+      `Writing ${allFacts.length} facts directly into gbrain/PostgreSQL...`,
+    );
 
-    if (!result.ok) {
-      gbrainSuccess = false;
-    } else {
-      gbrainSuccess = true;
-    }
+    await upsertFactsIntoGbrain(allFacts);
+
+    gbrainSuccess = true;
+
+    console.log("gbrain/PostgreSQL storage complete.");
   }
-
-  const counts = factCount();
-const totalCount = counts.gmail + counts.drive;
 
   return {
     success: true,
 
     gmailCount: gmailFacts.length,
     driveCount: driveFacts.length,
-    totalCount,
+    totalCount: allFacts.length,
 
     gbrain: {
       success: gbrainSuccess,
@@ -78,9 +69,7 @@ const totalCount = counts.gmail + counts.drive;
     },
 
     message: gbrainSkipped
-      ? "Gmail and Drive synced. gbrain import was skipped."
-      : gbrainSuccess
-        ? "Gmail, Drive and gbrain synced successfully."
-        : "Gmail and Drive synced, but the gbrain import did not complete.",
+      ? "Gmail and Drive synced. gbrain storage was skipped."
+      : "Gmail, Drive and gbrain storage synced successfully.",
   };
 }

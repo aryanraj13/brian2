@@ -1,109 +1,145 @@
-/**
- * Integration with gbrain (https://github.com/garrytan/gbrain) as the system-of-record
- * store and hybrid-search retrieval engine.
- *
- * gbrain's own query surface (hybrid vector + keyword search with expansion) is used
- * as the PRIMARY retrieval path — one call spans both Gmail and Drive facts since both
- * get imported into the same brain. The SQLite index (lib/db.ts) is kept only as an
- * automatic fallback if the gbrain call fails, so the app doesn't break mid-demo.
- */
-import { execFile } from "child_process";
-import { promisify } from "util";
-import fs from "fs";
-import path from "path";
 import type { Fact } from "./db";
 
-const execFileAsync = promisify(execFile);
+const GBRAIN_MCP_URL =
+  process.env.GBRAIN_MCP_URL || "http://localhost:8787/mcp";
 
-const EXPORT_DIR = path.join(process.cwd(), "gbrain-export");
+const GBRAIN_MCP_TOKEN = process.env.GBRAIN_MCP_TOKEN;
 
-// GBRAIN_CLI_PATH: on Windows, `bun link`'s global symlink can break across drives
-// (e.g. clone on D:, global bin resolves against C:). If set, we invoke gbrain
-// directly via `bun run <path>` instead of relying on a `gbrain` command on PATH.
-const GBRAIN_CLI_PATH = process.env.GBRAIN_CLI_PATH; // e.g. D:\personal-brain\gbrain\src\cli.ts
+type McpResponse = {
+  result?: {
+    content?: Array<{
+      type: string;
+      text?: string;
+    }>;
+    [key: string]: any;
+  };
+  error?: {
+    code: number;
+    message: string;
+  };
+};
 
-function buildInvocation(args: string[]): { cmd: string; cmdArgs: string[] } {
-  if (GBRAIN_CLI_PATH) {
-    return { cmd: "bun", cmdArgs: ["run", GBRAIN_CLI_PATH, ...args] };
+async function callGbrainTool(
+  name: string,
+  args: Record<string, unknown>
+): Promise<McpResponse> {
+  if (!GBRAIN_MCP_TOKEN) {
+    throw new Error("GBRAIN_MCP_TOKEN is not configured.");
   }
-  return { cmd: "gbrain", cmdArgs: args };
-}
 
-function factToMarkdown(fact: Fact): string {
-  const frontmatter = [
-    "---",
-    `id: "${fact.id}"`,
-    `source: "${fact.source}"`,
-    `type: "${fact.type}"`,
-    `title: "${fact.title.replace(/"/g, '\\"')}"`,
-    `timestamp: "${fact.timestamp}"`,
-    `participants: [${fact.participants.map((p) => `"${p}"`).join(", ")}]`,
-    `filenames: [${fact.filenames.map((f) => `"${f.replace(/"/g, '\\"')}"`).join(", ")}]`,
-    `link: "${fact.link}"`,
-    fact.thread_id ? `thread_id: "${fact.thread_id}"` : null,
-    "---",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const response = await fetch(GBRAIN_MCP_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${GBRAIN_MCP_TOKEN}`,
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "tools/call",
+      params: {
+        name,
+        arguments: args,
+      },
+    }),
+  });
 
-  const body = fact.body || fact.snippet || "";
-  return `${frontmatter}\n\n${body}\n`;
-}
-
-/**
- * Write facts to markdown files ready for gbrain import. Does not itself run the
- * gbrain CLI — call importIntoGbrain() after.
- */
-export function exportFactsToMarkdown(facts: Fact[]) {
-  for (const fact of facts) {
-    const sourceDir = path.join(EXPORT_DIR, fact.source);
-    fs.mkdirSync(sourceDir, { recursive: true });
-    const safeId = fact.id.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const filePath = path.join(sourceDir, `${safeId}.md`);
-    fs.writeFileSync(filePath, factToMarkdown(fact), "utf-8");
-  }
-  return EXPORT_DIR;
-}
-
-/**
- * Shells out to the gbrain CLI to import the exported markdown directory.
- */
-export async function importIntoGbrain(dir: string = EXPORT_DIR) {
-  const { cmd, cmdArgs } = buildInvocation(["import", dir]);
-  try {
-    const { stdout, stderr } = await execFileAsync(cmd, cmdArgs, {
-      maxBuffer: 1024 * 1024 * 10,
-    });
-    if (stderr) console.error("[gbrain import stderr]", stderr);
-    console.log("[gbrain import stdout]", stdout);
-    return { ok: true, stdout, stderr };
-  } catch (err: any) {
-    console.error(
-      "[gbrain import failed] — is gbrain installed and initialized? " +
-        "Run `gbrain doctor` (or the bun run .../cli.ts doctor equivalent) to check.",
-      err.message
+  if (!response.ok) {
+    throw new Error(
+      `gbrain MCP request failed: ${response.status} ${response.statusText}`
     );
-    return { ok: false, error: err.message };
   }
+
+  const text = await response.text();
+
+  const dataLine = text
+    .split("\n")
+    .find((line) => line.startsWith("data:"));
+
+  if (!dataLine) {
+    throw new Error(`Invalid gbrain MCP response: ${text}`);
+  }
+
+  const json = dataLine.slice("data:".length).trim();
+
+  return JSON.parse(json) as McpResponse;
 }
 
 /**
- * Hybrid search (vector + keyword + expansion) across the whole imported brain —
- * spans both Gmail and Drive facts in one call. Returns gbrain's raw text output
- * (there's no --json flag; this CLI is designed to hand results straight to an LLM
- * as context, which suits us fine) or null if the call fails, so callers can fall
- * back to the SQLite index.
+ * Query GBrain.
+ *
+ * The search strategy is selected automatically:
+ *
+ * focused:
+ *   expand=false
+ *   adaptive_return=true
+ *
+ * broad:
+ *   expand=true
+ *   adaptive_return=false
  */
-export async function queryGbrain(question: string, limit = 15): Promise<string | null> {
-  const { cmd, cmdArgs } = buildInvocation(["query", question, "--limit", String(limit)]);
+export async function queryGbrain(
+  question: string,
+  options?: {
+    searchMode?: "focused" | "broad";
+    limit?: number;
+  }
+): Promise<string | null> {
   try {
-    const { stdout, stderr } = await execFileAsync(cmd, cmdArgs, {
-      maxBuffer: 1024 * 1024 * 10,
+    const searchMode = options?.searchMode || "focused";
+
+    const isBroad = searchMode === "broad";
+
+    const limit = options?.limit ?? (isBroad ? 15 : 8);
+
+    console.log(
+      `[gbrain] Search mode: ${searchMode} | expand=${isBroad} | limit=${limit}`
+    );
+
+    const response = await callGbrainTool("query", {
+      query: question,
+
+      limit,
+
+      // Broad questions benefit from multi-query expansion.
+      // Focused lookups do not need it.
+      expand: isBroad,
+
+      detail: "medium",
+
+      source_id: "personal-brain",
+
+      // For focused lookups, ask GBrain to return a tight result set.
+      adaptive_return: !isBroad,
     });
-    if (stderr) console.error("[gbrain query stderr]", stderr);
-    return stdout;
-  } catch (err: any) {
-    console.error("[gbrain query failed] — falling back to SQLite index.", err.message);
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    const content = response.result?.content;
+
+    if (!content || content.length === 0) {
+      return null;
+    }
+
+    const result = content
+      .map((item) => item.text || "")
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!result.trim()) {
+      return null;
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      "[gbrain query failed] Falling back to SQLite:",
+      error
+    );
+
     return null;
   }
 }
