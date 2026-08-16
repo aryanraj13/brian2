@@ -3,50 +3,65 @@ import type { OAuth2Client } from "google-auth-library";
 import type { Fact } from "./db";
 
 function headerValue(headers: any[], name: string): string {
-  const h = headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase());
+  const h = headers.find(
+    (h: any) => h.name?.toLowerCase() === name.toLowerCase()
+  );
+
   return h ? h.value : "";
 }
 
 function extractEmails(headerVal: string): string[] {
-  const matches = headerVal.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+  const matches = headerVal.match(
+    /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
+  );
+
   return matches || [];
 }
 
 function decodeBody(payload: any): string {
-  // Walk the MIME parts looking for text/plain; fall back to snippet if not found.
   function findPart(part: any): string | null {
     if (!part) return null;
+
     if (part.mimeType === "text/plain" && part.body?.data) {
       return Buffer.from(part.body.data, "base64").toString("utf-8");
     }
+
     if (part.parts) {
       for (const p of part.parts) {
         const found = findPart(p);
-        if (found) return found;
+
+        if (found) {
+          return found;
+        }
       }
     }
+
     return null;
   }
+
   return findPart(payload) || "";
 }
 
-/**
- * Fetch Gmail messages from the last `months` months and normalize into Facts.
- * Kept intentionally simple: list + get per message. Fine for a personal-scale sync.
- */
 export async function fetchGmailFacts(
   auth: OAuth2Client,
   months = 1
 ): Promise<Fact[]> {
-  const gmail = google.gmail({ version: "v1", auth });
+  const gmail = google.gmail({
+    version: "v1",
+    auth,
+  });
 
   const afterDate = new Date();
+
   afterDate.setMonth(afterDate.getMonth() - months);
 
   const afterStr = `${afterDate.getFullYear()}/${afterDate.getMonth() + 1}/${afterDate.getDate()}`;
 
   const facts: Fact[] = [];
-  let pageToken: string | undefined = undefined;
+
+  let pageToken: string | undefined;
+
+  const batchSize = 10;
 
   do {
     const listRes: any = await gmail.users.messages.list({
@@ -58,14 +73,15 @@ export async function fetchGmailFacts(
 
     const messages = listRes.data.messages || [];
 
-    // Process up to 10 Gmail messages concurrently.
-    const batchSize = 10;
+    console.log(
+      `[gmail] Found ${messages.length} messages on this page`
+    );
 
     for (let i = 0; i < messages.length; i += batchSize) {
       const batch = messages.slice(i, i + batchSize);
 
       console.log(
-        `Fetching Gmail messages ${i + 1}-${i + batch.length} of ${messages.length}...`
+        `[gmail] Fetching ${i + 1}-${i + batch.length} of ${messages.length}`
       );
 
       const batchFacts = await Promise.all(
@@ -76,7 +92,8 @@ export async function fetchGmailFacts(
             format: "full",
           });
 
-          const headers = msgRes.data.payload?.headers || [];
+          const payload = msgRes.data.payload;
+          const headers = payload?.headers || [];
 
           const subject =
             headerValue(headers, "Subject") || "(no subject)";
@@ -94,7 +111,7 @@ export async function fetchGmailFacts(
             ...extractEmails(to),
           ];
 
-          const body = decodeBody(msgRes.data.payload).slice(0, 4000);
+          const body = decodeBody(payload).slice(0, 4000);
 
           const filenames: string[] = [];
 
@@ -106,11 +123,13 @@ export async function fetchGmailFacts(
             }
 
             if (part.parts) {
-              part.parts.forEach(walkForAttachments);
+              for (const child of part.parts) {
+                walkForAttachments(child);
+              }
             }
           }
 
-          walkForAttachments(msgRes.data.payload);
+          walkForAttachments(payload);
 
           return {
             id: `gmail:${m.id}`,
@@ -133,6 +152,8 @@ export async function fetchGmailFacts(
 
     pageToken = listRes.data.nextPageToken || undefined;
   } while (pageToken);
+
+  console.log(`[gmail] Total facts fetched: ${facts.length}`);
 
   return facts;
 }

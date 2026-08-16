@@ -18,42 +18,64 @@ export type SyncResult = {
 export async function syncPersonalData(): Promise<SyncResult> {
   if (!process.env.GOOGLE_REFRESH_TOKEN) {
     throw new Error(
-      "No GOOGLE_REFRESH_TOKEN found. Please run `npm run auth` first.",
+      "No GOOGLE_REFRESH_TOKEN found. Please configure Google OAuth."
     );
   }
 
   const auth = getOAuth2Client();
-  const months = Number(process.env.SYNC_MONTHS || 6);
 
-  console.log(`Fetching Gmail messages from the last ${months} months...`);
+  const months = Number(
+    process.env.SYNC_MONTHS || 1
+  );
 
-  const gmailFacts = await fetchGmailFacts(auth, months);
+  console.log(
+    `[sync] Starting sync for last ${months} month(s)...`
+  );
 
-  console.log(`Fetched ${gmailFacts.length} Gmail facts.`);
+  /*
+   * Gmail and Drive are independent.
+   * Fetch both at the same time.
+   */
+  const [gmailFacts, driveFacts] =
+    await Promise.all([
+      fetchGmailFacts(auth, months),
+      fetchDriveFacts(auth, months),
+    ]);
 
-  console.log(`Fetching Drive files from the last ${months} months...`);
+  console.log(
+    `[sync] Gmail facts: ${gmailFacts.length}`
+  );
 
-  const driveFacts = await fetchDriveFacts(auth, months);
+  console.log(
+    `[sync] Drive facts: ${driveFacts.length}`
+  );
 
-  console.log(`Fetched ${driveFacts.length} Drive facts.`);
-
-  const allFacts = [...gmailFacts, ...driveFacts];
+  const allFacts = [
+    ...gmailFacts,
+    ...driveFacts,
+  ];
 
   let gbrainSuccess = false;
   let gbrainSkipped = false;
 
   if (process.env.SKIP_GBRAIN === "1") {
+    console.log(
+      "[sync] SKIP_GBRAIN=1 — skipping GBrain storage"
+    );
+
     gbrainSkipped = true;
   } else {
     console.log(
-      `Writing ${allFacts.length} facts directly into gbrain/PostgreSQL...`,
+      `[sync] Writing ${allFacts.length} facts to GBrain...`
     );
 
     await upsertFactsIntoGbrain(allFacts);
 
     gbrainSuccess = true;
 
-    console.log("gbrain/PostgreSQL storage complete.");
+    console.log(
+      "[sync] GBrain storage complete."
+    );
   }
 
   return {
@@ -69,7 +91,7 @@ export async function syncPersonalData(): Promise<SyncResult> {
     },
 
     message: gbrainSkipped
-      ? "Gmail and Drive synced. gbrain storage was skipped."
-      : "Gmail, Drive and gbrain storage synced successfully.",
+      ? "Gmail and Drive synced. GBrain storage was skipped."
+      : "Gmail, Drive and GBrain synced successfully.",
   };
 }
