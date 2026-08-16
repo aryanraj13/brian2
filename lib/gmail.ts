@@ -34,10 +34,15 @@ function decodeBody(payload: any): string {
  * Fetch Gmail messages from the last `months` months and normalize into Facts.
  * Kept intentionally simple: list + get per message. Fine for a personal-scale sync.
  */
-export async function fetchGmailFacts(auth: OAuth2Client, months = 6): Promise<Fact[]> {
+export async function fetchGmailFacts(
+  auth: OAuth2Client,
+  months = 6
+): Promise<Fact[]> {
   const gmail = google.gmail({ version: "v1", auth });
+
   const afterDate = new Date();
   afterDate.setMonth(afterDate.getMonth() - months);
+
   const afterStr = `${afterDate.getFullYear()}/${afterDate.getMonth() + 1}/${afterDate.getDate()}`;
 
   const facts: Fact[] = [];
@@ -52,45 +57,78 @@ export async function fetchGmailFacts(auth: OAuth2Client, months = 6): Promise<F
     });
 
     const messages = listRes.data.messages || [];
-    for (const m of messages) {
-      const msgRes: any = await gmail.users.messages.get({
-        userId: "me",
-        id: m.id!,
-        format: "full",
-      });
 
-      const headers = msgRes.data.payload?.headers || [];
-      const subject = headerValue(headers, "Subject") || "(no subject)";
-      const from = headerValue(headers, "From");
-      const to = headerValue(headers, "To");
-      const dateHeader = headerValue(headers, "Date");
-      const timestamp = dateHeader ? new Date(dateHeader).toISOString() : new Date().toISOString();
+    // Process up to 10 Gmail messages concurrently.
+    const batchSize = 10;
 
-      const participants = [...extractEmails(from), ...extractEmails(to)];
-      const body = decodeBody(msgRes.data.payload).slice(0, 4000);
+    for (let i = 0; i < messages.length; i += batchSize) {
+      const batch = messages.slice(i, i + batchSize);
 
-      // Collect attachment filenames from the MIME tree.
-      const filenames: string[] = [];
-      function walkForAttachments(part: any) {
-        if (!part) return;
-        if (part.filename) filenames.push(part.filename);
-        if (part.parts) part.parts.forEach(walkForAttachments);
-      }
-      walkForAttachments(msgRes.data.payload);
+      console.log(
+        `Fetching Gmail messages ${i + 1}-${i + batch.length} of ${messages.length}...`
+      );
 
-      facts.push({
-        id: `gmail:${m.id}`,
-        source: "gmail",
-        type: "email",
-        title: subject,
-        participants,
-        timestamp,
-        snippet: msgRes.data.snippet || "",
-        body,
-        filenames,
-        link: `https://mail.google.com/mail/u/0/#all/${m.id}`,
-        thread_id: msgRes.data.threadId || null,
-      });
+      const batchFacts = await Promise.all(
+        batch.map(async (m: any): Promise<Fact> => {
+          const msgRes: any = await gmail.users.messages.get({
+            userId: "me",
+            id: m.id!,
+            format: "full",
+          });
+
+          const headers = msgRes.data.payload?.headers || [];
+
+          const subject =
+            headerValue(headers, "Subject") || "(no subject)";
+
+          const from = headerValue(headers, "From");
+          const to = headerValue(headers, "To");
+          const dateHeader = headerValue(headers, "Date");
+
+          const timestamp = dateHeader
+            ? new Date(dateHeader).toISOString()
+            : new Date().toISOString();
+
+          const participants = [
+            ...extractEmails(from),
+            ...extractEmails(to),
+          ];
+
+          const body = decodeBody(msgRes.data.payload).slice(0, 4000);
+
+          const filenames: string[] = [];
+
+          function walkForAttachments(part: any) {
+            if (!part) return;
+
+            if (part.filename) {
+              filenames.push(part.filename);
+            }
+
+            if (part.parts) {
+              part.parts.forEach(walkForAttachments);
+            }
+          }
+
+          walkForAttachments(msgRes.data.payload);
+
+          return {
+            id: `gmail:${m.id}`,
+            source: "gmail",
+            type: "email",
+            title: subject,
+            participants,
+            timestamp,
+            snippet: msgRes.data.snippet || "",
+            body,
+            filenames,
+            link: `https://mail.google.com/mail/u/0/#all/${m.id}`,
+            thread_id: msgRes.data.threadId || null,
+          };
+        })
+      );
+
+      facts.push(...batchFacts);
     }
 
     pageToken = listRes.data.nextPageToken || undefined;
