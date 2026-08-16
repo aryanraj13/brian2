@@ -6,8 +6,6 @@ export default function DemoVideoButton() {
   const [isOpen, setIsOpen] = useState(false);
 
   // Replace this with your actual demo video URL
-  const DEMO_VIDEO_URL = "https://youtu.be/tfSS1e3kYeo?si=2C-pQhXy7pcw1Mac";
-
   return (
     <>
       {/* Demo Video Button */}
@@ -79,13 +77,12 @@ export default function DemoVideoButton() {
 
             {/* Video */}
             <div className="aspect-video w-full bg-black">
-              <iframe
-                src={DEMO_VIDEO_URL}
-                title="Personal Brain Demo"
-                className="h-full w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
+            <video
+  src="https://evbbgoclud44gknp.public.blob.vercel-storage.com/demopers.mp4"
+  controls
+  playsInline
+  className="w-full rounded-xl"
+/>
             </div>
           </div>
         </div>
