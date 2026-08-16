@@ -36,7 +36,7 @@ function decodeBody(payload: any): string {
  */
 export async function fetchGmailFacts(
   auth: OAuth2Client,
-  months = 6
+  months = 1
 ): Promise<Fact[]> {
   const gmail = google.gmail({ version: "v1", auth });
 
