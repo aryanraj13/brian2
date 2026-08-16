@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import LoginClient from "./LoginClient";
+import DemoVideoButton from "./DemoVideoButton";
 
 const FEATURES = [
   {
@@ -84,14 +85,12 @@ export default async function Home() {
             </span>
           </div>
 
-          <div className="hidden text-sm text-neutral-500 sm:block">
-            Your data. One intelligent interface.
-          </div>
+          <DemoVideoButton />
         </nav>
 
         {/* Hero */}
         <section className="flex min-h-[680px] flex-col items-center justify-center text-center">
-          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/[0.06] px-4 py-2 text-xs font-medium text-blue-300">
+          <div className="mt-3 mb-7 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/[0.06] px-4 py-2 text-xs font-medium text-blue-300">
             <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
             Personal AI knowledge system
           </div>
@@ -155,54 +154,9 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Features */}
-        <section className="border-t border-white/[0.06] py-24">
-          <div className="mb-10 max-w-xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
-              Your connected brain
-            </p>
-
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-              One place for your personal information.
-            </h2>
-
-            <p className="mt-4 leading-7 text-neutral-500">
-              Personal Brain connects your information sources so you can
-              retrieve and reason over them without manually searching through
-              each one.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {FEATURES.map((feature) => (
-              <div
-                key={feature.title}
-                className="group rounded-2xl border border-white/[0.08] bg-white/[0.02] p-7 transition duration-300 hover:-translate-y-1 hover:border-white/[0.14] hover:bg-white/[0.035]"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-lg">
-                    {feature.icon}
-                  </div>
-
-                  <span className="text-xs text-neutral-700">
-                    {feature.number}
-                  </span>
-                </div>
-
-                <h3 className="mt-7 text-lg font-semibold">
-                  {feature.title}
-                </h3>
-
-                <p className="mt-3 text-sm leading-6 text-neutral-500">
-                  {feature.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
 
         {/* How it works */}
-        <section className="border-t border-white/[0.06] py-24">
+        <section className="mt-7 border-t border-white/[0.06] py-24">
           <div className="mb-12">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
               How it works
@@ -237,81 +191,6 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Example questions */}
-        <section className="border-t border-white/[0.06] py-24">
-          <div className="mx-auto max-w-3xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
-              Ask your brain
-            </p>
-
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Questions, not searches.
-            </h2>
-
-            <p className="mt-4 text-neutral-500">
-              Ask naturally. Personal Brain finds the relevant information and
-              turns it into a conversational answer.
-            </p>
-
-            <div className="mt-10 space-y-3 text-left">
-              {EXAMPLES.map((example, index) => (
-                <div
-                  key={example}
-                  className="flex items-center gap-4 rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 transition hover:border-white/[0.12]"
-                >
-                  <span className="text-xs text-neutral-700">
-                    0{index + 1}
-                  </span>
-
-                  <span className="text-sm text-neutral-400">
-                    &quot;{example}&quot;
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Tech */}
-        <section className="border-t border-white/[0.06] py-24">
-          <div className="rounded-3xl border border-white/[0.08] bg-white/[0.025] p-8 sm:p-12">
-            <div className="max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
-                Built for the take-home
-              </p>
-
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-                Built around your personal data.
-              </h2>
-
-              <p className="mt-4 leading-7 text-neutral-500">
-                The system connects multiple personal data sources, stores
-                normalized information in the brain, retrieves relevant facts,
-                and uses AI to reason over them before producing an answer.
-              </p>
-            </div>
-
-            <div className="mt-10 flex flex-wrap gap-2">
-              {[
-                "Next.js",
-                "TypeScript",
-                "Google OAuth",
-                "Gmail API",
-                "Google Drive API",
-                "Gemini",
-                "gbrain",
-                "SQLite",
-              ].map((technology) => (
-                <span
-                  key={technology}
-                  className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-neutral-400"
-                >
-                  {technology}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
 
         {/* CTA */}
         <section className="border-t border-white/[0.06] py-28 text-center">
@@ -336,7 +215,7 @@ export default async function Home() {
 
         {/* Footer */}
         <footer className="flex flex-col gap-3 border-t border-white/[0.06] py-8 text-xs text-neutral-600 sm:flex-row sm:items-center sm:justify-between">
-          <span>© 2026 Personal Brain</span>
+          <span>Personal Brain</span>
 
           <span>
             Gmail · Google Drive · Gemini · gbrain

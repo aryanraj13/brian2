@@ -590,8 +590,7 @@ const [syncError, setSyncError] = useState("");
           </form>
 
           <p className="mt-2 text-center text-[10px] text-neutral-700">
-            Personal Brain can make mistakes. Verify important information
-            against the original source.
+          Click the Sync button to fetch the latest emails and files from Google drive.
           </p>
         </div>
       </div>
