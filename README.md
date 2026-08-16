@@ -13,6 +13,8 @@ The system is designed around **cross-source reasoning**, allowing it to
 combine information from Gmail and Google Drive to answer questions that
 require context from multiple sources.
 
+![Hero Section](https://github.com/aryanraj13/brian2/blob/b0632236a2f4917ac9e09c62feba9195287accee/home.png)
+
 ---
 
 ## 🎥 Demo
