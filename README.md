@@ -29,6 +29,9 @@ https://drive.google.com/file/d/1xHL2nifvAtMV--ly8EhZOdDkFFPejPRK/view?usp=shari
 
 ---
 
+![Chat Section](https://github.com/aryanraj13/brian2/blob/b0632236a2f4917ac9e09c62feba9195287accee/chat1.png)
+
+
 ## ✨ Features
 
 ### Gmail Integration
@@ -47,6 +50,8 @@ https://drive.google.com/file/d/1xHL2nifvAtMV--ly8EhZOdDkFFPejPRK/view?usp=shari
 - Retrieve Google Docs content.
 - Preserve links to original Drive files.
 - Include Drive documents in cross-source reasoning.
+
+![Chat Section](https://github.com/aryanraj13/brian2/blob/b0632236a2f4917ac9e09c62feba9195287accee/chat2.png)
 
 ### 🧠 GBrain Integration
 
